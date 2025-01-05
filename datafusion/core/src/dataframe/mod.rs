@@ -3918,7 +3918,7 @@ mod tests {
             JoinType::Left,
             JoinType::Right,
             JoinType::Full,
-            JoinType::LeftSemi,
+            JoinType::Semi(JoinSide::Left),
             JoinType::RightSemi,
             JoinType::LeftAnti,
             JoinType::RightAnti,
@@ -3941,7 +3941,7 @@ mod tests {
 
             match join_type {
                 JoinType::Left
-                | JoinType::LeftSemi
+                | JoinType::Semi(JoinSide::Left)
                 | JoinType::LeftAnti
                 | JoinType::LeftMark => {
                     let left_exprs: Vec<Arc<dyn PhysicalExpr>> = vec![

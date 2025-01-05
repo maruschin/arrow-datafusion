@@ -34,25 +34,22 @@ pub enum JoinType {
     Inner,
     /// Left Join - Returns all rows from the left table and matching rows from the right table.
     /// If no match, NULL values are returned for columns from the right table.
-    Left,
-    /// Right Join - Returns all rows from the right table and matching rows from the left table.
+    /// Outer Right Join - Returns all rows from the right table and matching rows from the left table.
     /// If no match, NULL values are returned for columns from the left table.
-    Right,
-    /// Full Join (also called Full Outer Join) - Returns all rows from both tables, matching rows where possible.
+    Outer(JoinSide),
+    /// Outer Full Join (also called Full Outer Join) - Returns all rows from both tables, matching rows where possible.
     /// When a row from either table has no match in the other table, the missing columns are filled with NULL values.
     /// For example, if table A has row X with no match in table B, the result will contain row X with NULL values for all of table B's columns.
     /// This join type preserves all records from both tables, making it useful when you need to see all data regardless of matches.
     Full,
     /// Left Semi Join - Returns rows from the left table that have matching rows in the right table.
     /// Only columns from the left table are returned.
-    LeftSemi,
     /// Right Semi Join - Returns rows from the right table that have matching rows in the left table.
     /// Only columns from the right table are returned.
-    RightSemi,
+    Semi(JoinSide),
     /// Left Anti Join - Returns rows from the left table that do not have a matching row in the right table.
-    LeftAnti,
     /// Right Anti Join - Returns rows from the right table that do not have a matching row in the left table.
-    RightAnti,
+    Anti(JoinSide),
     /// Left Mark join
     ///
     /// Returns one record for each record from the left input. The output contains an additional
@@ -71,7 +68,10 @@ pub enum JoinType {
 
 impl JoinType {
     pub fn is_outer(self) -> bool {
-        self == JoinType::Left || self == JoinType::Right || self == JoinType::Full
+        match self {
+            JoinType::Outer(_) | JoinType::Full => true,
+            _ => false,
+        }
     }
 
     /// Returns the `JoinType` if the (2) inputs were swapped
@@ -81,12 +81,9 @@ impl JoinType {
         match self {
             JoinType::Inner => JoinType::Inner,
             JoinType::Full => JoinType::Full,
-            JoinType::Left => JoinType::Right,
-            JoinType::Right => JoinType::Left,
-            JoinType::LeftSemi => JoinType::RightSemi,
-            JoinType::RightSemi => JoinType::LeftSemi,
-            JoinType::LeftAnti => JoinType::RightAnti,
-            JoinType::RightAnti => JoinType::LeftAnti,
+            JoinType::Outer(side) => JoinType::Outer(side.negate()),
+            JoinType::Semi(side) => JoinType::Semi(side.negate()),
+            JoinType::Anti(side) => JoinType::Anti(side.negate()),
             JoinType::LeftMark => {
                 unreachable!("LeftMark join type does not support swapping")
             }
@@ -98,13 +95,10 @@ impl JoinType {
         matches!(
             self,
             JoinType::Inner
-                | JoinType::Left
-                | JoinType::Right
                 | JoinType::Full
-                | JoinType::LeftSemi
-                | JoinType::RightSemi
-                | JoinType::LeftAnti
-                | JoinType::RightAnti
+                | JoinType::Outer(_)
+                | JoinType::Semi(_)
+                | JoinType::Anti(_)
         )
     }
 }
@@ -113,13 +107,13 @@ impl Display for JoinType {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let join_type = match self {
             JoinType::Inner => "Inner",
-            JoinType::Left => "Left",
-            JoinType::Right => "Right",
+            JoinType::Outer(JoinSide::Left) => "Left",
+            JoinType::Outer(JoinSide::Right) => "Right",
             JoinType::Full => "Full",
-            JoinType::LeftSemi => "LeftSemi",
-            JoinType::RightSemi => "RightSemi",
-            JoinType::LeftAnti => "LeftAnti",
-            JoinType::RightAnti => "RightAnti",
+            JoinType::Semi(JoinSide::Left) => "LeftSemi",
+            JoinType::Semi(JoinSide::Right) => "RightSemi",
+            JoinType::Anti(JoinSide::Left) => "LeftAnti",
+            JoinType::Anti(JoinSide::Right) => "RightAnti",
             JoinType::LeftMark => "LeftMark",
         };
         write!(f, "{join_type}")
@@ -133,13 +127,13 @@ impl FromStr for JoinType {
         let s = s.to_uppercase();
         match s.as_str() {
             "INNER" => Ok(JoinType::Inner),
-            "LEFT" => Ok(JoinType::Left),
-            "RIGHT" => Ok(JoinType::Right),
+            "LEFT" => Ok(JoinType::Outer(JoinSide::Left)),
+            "RIGHT" => Ok(JoinType::Outer(JoinSide::Right)),
             "FULL" => Ok(JoinType::Full),
-            "LEFTSEMI" => Ok(JoinType::LeftSemi),
-            "RIGHTSEMI" => Ok(JoinType::RightSemi),
-            "LEFTANTI" => Ok(JoinType::LeftAnti),
-            "RIGHTANTI" => Ok(JoinType::RightAnti),
+            "LEFTSEMI" => Ok(JoinType::Semi(JoinSide::Left)),
+            "RIGHTSEMI" => Ok(JoinType::Semi(JoinSide::Right)),
+            "LEFTANTI" => Ok(JoinType::Anti(JoinSide::Left)),
+            "RIGHTANTI" => Ok(JoinType::Anti(JoinSide::Right)),
             "LEFTMARK" => Ok(JoinType::LeftMark),
             _ => _not_impl_err!("The join type {s} does not exist or is not implemented"),
         }
@@ -160,22 +154,18 @@ impl Display for JoinSide {
         match self {
             JoinSide::Left => write!(f, "left"),
             JoinSide::Right => write!(f, "right"),
-            JoinSide::None => write!(f, "none"),
         }
     }
 }
 
 /// Join side.
 /// Stores the referred table side during calculations
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Hash)]
 pub enum JoinSide {
     /// Left side of the join
     Left,
     /// Right side of the join
     Right,
-    /// Neither side of the join, used for Mark joins where the mark column does not belong to
-    /// either side of the join
-    None,
 }
 
 impl JoinSide {
@@ -184,7 +174,6 @@ impl JoinSide {
         match self {
             JoinSide::Left => JoinSide::Right,
             JoinSide::Right => JoinSide::Left,
-            JoinSide::None => JoinSide::None,
         }
     }
 }

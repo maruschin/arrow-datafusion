@@ -63,7 +63,7 @@ use indexmap::IndexSet;
 // backwards compatibility
 use crate::display::PgJsonVisitor;
 pub use datafusion_common::display::{PlanType, StringifiedPlan, ToStringifiedPlan};
-pub use datafusion_common::{JoinConstraint, JoinType};
+pub use datafusion_common::{JoinConstraint, JoinSide, JoinType};
 
 /// A `LogicalPlan` is a node in a tree of relational operators (such as
 /// Projection or Filter).
@@ -548,6 +548,10 @@ impl LogicalPlan {
                         left.head_output_expr()
                     }
                 }
+                JoinType::Anti(side) | JoinType::Semi(side) => match side {
+                    JoinSide::Left => left.head_output_expr(),
+                    JoinSide::Right => right.head_output_expr(),
+                },
                 JoinType::LeftSemi | JoinType::LeftAnti | JoinType::LeftMark => {
                     left.head_output_expr()
                 }
@@ -1317,24 +1321,30 @@ impl LogicalPlan {
                 join_type,
                 ..
             }) => match join_type {
-                JoinType::Inner | JoinType::Left | JoinType::Right | JoinType::Full => {
-                    match (left.max_rows(), right.max_rows()) {
-                        (Some(left_max), Some(right_max)) => {
-                            let min_rows = match join_type {
-                                JoinType::Left => left_max,
-                                JoinType::Right => right_max,
-                                JoinType::Full => left_max + right_max,
-                                _ => 0,
-                            };
-                            Some((left_max * right_max).max(min_rows))
-                        }
-                        _ => None,
+                JoinType::Inner => Some(left.max_rows()? * right.max_rows()?),
+                JoinType::Outer(JoinSide::Left)
+                | JoinType::Outer(JoinSide::Right)
+                | JoinType::Full => {
+                    match (left.max_rows()?, right.max_rows()?, join_type) {
+                        (0, 0, _) => Some(0),
+                        (
+                            left_max,
+                            0,
+                            JoinType::Outer(JoinSide::Left) | JoinType::Full,
+                        ) => Some(left_max),
+                        (
+                            0,
+                            right_max,
+                            JoinType::Outer(JoinSide::Right) | JoinType::Full,
+                        ) => Some(right_max),
+                        (left_max, right_max, _) => Some(left_max * right_max),
                     }
                 }
-                JoinType::LeftSemi | JoinType::LeftAnti | JoinType::LeftMark => {
-                    left.max_rows()
-                }
-                JoinType::RightSemi | JoinType::RightAnti => right.max_rows(),
+                JoinType::Semi(side) | JoinType::Anti(side) => match side {
+                    JoinSide::Left => left.max_rows(),
+                    JoinSide::Right => right.max_rows(),
+                },
+                JoinType::LeftMark => left.max_rows(),
             },
             LogicalPlan::Repartition(Repartition { input, .. }) => input.max_rows(),
             LogicalPlan::Union(Union { inputs, .. }) => inputs
@@ -3433,15 +3443,15 @@ pub enum Partitioning {
 ///   input             output_name
 ///  ┌─────────┐      ┌─────────┐
 ///  │{{1,2}}  │      │ 1       │
-///  ├─────────┼─────►├─────────┤           
-///  │{{3}}    │      │ 2       │           
-///  ├─────────┤      ├─────────┤           
-///  │{{4},{5}}│      │ 3       │           
-///  └─────────┘      ├─────────┤           
-///                   │ 4       │           
-///                   ├─────────┤           
-///                   │ 5       │           
-///                   └─────────┘           
+///  ├─────────┼─────►├─────────┤
+///  │{{3}}    │      │ 2       │
+///  ├─────────┤      ├─────────┤
+///  │{{4},{5}}│      │ 3       │
+///  └─────────┘      ├─────────┤
+///                   │ 4       │
+///                   ├─────────┤
+///                   │ 5       │
+///                   └─────────┘
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd)]
 pub struct ColumnUnnestList {

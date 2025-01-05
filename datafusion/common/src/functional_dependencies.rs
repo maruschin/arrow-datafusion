@@ -22,8 +22,10 @@ use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 use std::vec::IntoIter;
 
+use tokio::io::Join;
+
 use crate::utils::{merge_and_order_indices, set_difference};
-use crate::{DFSchema, HashSet, JoinType};
+use crate::{DFSchema, HashSet, JoinSide, JoinType};
 
 /// This object defines a constraint on a table.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
@@ -312,7 +314,7 @@ impl FunctionalDependencies {
         let mut left_func_dependencies = self.clone();
 
         match join_type {
-            JoinType::Inner | JoinType::Left | JoinType::Right => {
+            JoinType::Inner => {
                 // Add offset to right schema:
                 right_func_dependencies.add_offset(left_cols_len);
 
@@ -322,24 +324,36 @@ impl FunctionalDependencies {
                 right_func_dependencies =
                     right_func_dependencies.with_dependency(Dependency::Multi);
 
-                if *join_type == JoinType::Left {
-                    // Downgrade the right side, since it may have additional NULL values:
-                    right_func_dependencies.downgrade_dependencies();
-                } else if *join_type == JoinType::Right {
-                    // Downgrade the left side, since it may have additional NULL values:
-                    left_func_dependencies.downgrade_dependencies();
-                }
                 // Combine left and right functional dependencies:
                 left_func_dependencies.extend(right_func_dependencies);
                 left_func_dependencies
             }
-            JoinType::LeftSemi | JoinType::LeftAnti | JoinType::LeftMark => {
-                // These joins preserve functional dependencies of the left side:
+            JoinType::Outer(side) => {
+                // Add offset to right schema:
+                right_func_dependencies.add_offset(left_cols_len);
+
+                // Result may have multiple values, update the dependency mode:
+                left_func_dependencies =
+                    left_func_dependencies.with_dependency(Dependency::Multi);
+                right_func_dependencies =
+                    right_func_dependencies.with_dependency(Dependency::Multi);
+
+                match side {
+                    JoinSide::Left => right_func_dependencies.downgrade_dependencies(),
+                    JoinSide::Right => left_func_dependencies.downgrade_dependencies(),
+                }
+
+                // Combine left and right functional dependencies:
+                left_func_dependencies.extend(right_func_dependencies);
                 left_func_dependencies
             }
-            JoinType::RightSemi | JoinType::RightAnti => {
-                // These joins preserve functional dependencies of the right side:
-                right_func_dependencies
+            JoinType::Anti(side) | JoinType::Semi(side) => match side {
+                JoinSide::Left => left_func_dependencies,
+                JoinSide::Right => right_func_dependencies,
+            },
+            JoinType::LeftMark => {
+                // These joins preserve functional dependencies of the left side:
+                left_func_dependencies
             }
             JoinType::Full => {
                 // All of the functional dependencies are lost in a FULL join:
