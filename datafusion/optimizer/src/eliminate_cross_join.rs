@@ -329,6 +329,8 @@ fn find_inner_join(
                 filter: None,
                 schema: join_schema,
                 null_equals_null: false,
+                group_expr: None,
+                aggr_expr: None,
             }));
         }
     }
@@ -351,6 +353,8 @@ fn find_inner_join(
         join_type: JoinType::Inner,
         join_constraint: JoinConstraint::On,
         null_equals_null: false,
+        aggr_expr: None,
+        group_expr: None,
     }))
 }
 

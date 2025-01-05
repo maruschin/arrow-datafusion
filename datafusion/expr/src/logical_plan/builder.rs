@@ -870,6 +870,10 @@ impl LogicalPlanBuilder {
             return plan_err!("left_keys and right_keys were not the same length");
         }
 
+        if join_type == JoinType::LeftGroup {
+            return plan_err!("Cannot create LefGroup Join manualy.");
+        }
+
         let filter = if let Some(expr) = filter {
             let filter = normalize_col_with_schemas_and_ambiguity_check(
                 expr,
@@ -977,6 +981,8 @@ impl LogicalPlanBuilder {
             join_constraint: JoinConstraint::On,
             schema: DFSchemaRef::new(join_schema),
             null_equals_null,
+            group_expr: None,
+            aggr_expr: None,
         })))
     }
 
@@ -1041,6 +1047,8 @@ impl LogicalPlanBuilder {
                 join_constraint: JoinConstraint::Using,
                 schema: DFSchemaRef::new(join_schema),
                 null_equals_null: false,
+                group_expr: None,
+                aggr_expr: None,
             })))
         }
     }
@@ -1058,6 +1066,8 @@ impl LogicalPlanBuilder {
             join_constraint: JoinConstraint::On,
             null_equals_null: false,
             schema: DFSchemaRef::new(join_schema),
+            group_expr: None,
+            aggr_expr: None,
         })))
     }
 
@@ -1276,6 +1286,8 @@ impl LogicalPlanBuilder {
             join_constraint: JoinConstraint::On,
             schema: DFSchemaRef::new(join_schema),
             null_equals_null: false,
+            group_expr: None,
+            aggr_expr: None,
         })))
     }
 
@@ -1389,7 +1401,7 @@ pub fn build_join_schema(
                 .collect::<Vec<_>>();
             left_fields.into_iter().chain(right_fields).collect()
         }
-        JoinType::Left => {
+        JoinType::Left | JoinType::LeftGroup => {
             // left then right, right set to nullable in case of not matched scenario
             let left_fields = left_fields
                 .map(|(q, f)| (q.cloned(), Arc::clone(f)))
