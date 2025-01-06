@@ -1153,7 +1153,7 @@ impl LogicalPlanBuilder {
         LogicalPlanBuilder::intersect_or_except(
             left_plan,
             right_plan,
-            JoinType::LeftAnti,
+            JoinType::Anti(JoinSide::Left),
             is_all,
         )
     }
@@ -1389,7 +1389,7 @@ pub fn build_join_schema(
                 .collect::<Vec<_>>();
             left_fields.into_iter().chain(right_fields).collect()
         }
-        JoinType::Left => {
+        JoinType::Outer(JoinSide::Left) => {
             // left then right, right set to nullable in case of not matched scenario
             let left_fields = left_fields
                 .map(|(q, f)| (q.cloned(), Arc::clone(f)))
@@ -1399,7 +1399,7 @@ pub fn build_join_schema(
                 .chain(nullify_fields(right_fields))
                 .collect()
         }
-        JoinType::Right => {
+        JoinType::Outer(JoinSide::Right) => {
             // left then right, left set to nullable in case of not matched scenario
             let right_fields = right_fields
                 .map(|(q, f)| (q.cloned(), Arc::clone(f)))
@@ -1416,7 +1416,7 @@ pub fn build_join_schema(
                 .chain(nullify_fields(right_fields))
                 .collect()
         }
-        JoinType::LeftSemi | JoinType::LeftAnti => {
+        JoinType::Semi(JoinSide::Left) | JoinType::Anti(JoinSide::Left) => {
             // Only use the left side for the schema
             left_fields
                 .map(|(q, f)| (q.cloned(), Arc::clone(f)))
@@ -1426,7 +1426,7 @@ pub fn build_join_schema(
             .map(|(q, f)| (q.cloned(), Arc::clone(f)))
             .chain(once(mark_field(right)))
             .collect(),
-        JoinType::RightSemi | JoinType::RightAnti => {
+        JoinType::Semi(JoinSide::Right) | JoinType::Anti(JoinSide::Right) => {
             // Only use the right side for the schema
             right_fields
                 .map(|(q, f)| (q.cloned(), Arc::clone(f)))

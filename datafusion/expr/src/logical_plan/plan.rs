@@ -541,7 +541,7 @@ impl LogicalPlan {
                 join_type,
                 ..
             }) => match join_type {
-                JoinType::Inner | JoinType::Left | JoinType::Right | JoinType::Full => {
+                JoinType::Inner | JoinType::Outer(_) | JoinType::Full => {
                     if left.schema().fields().is_empty() {
                         right.head_output_expr()
                     } else {
@@ -552,10 +552,7 @@ impl LogicalPlan {
                     JoinSide::Left => left.head_output_expr(),
                     JoinSide::Right => right.head_output_expr(),
                 },
-                JoinType::LeftSemi | JoinType::LeftAnti | JoinType::LeftMark => {
-                    left.head_output_expr()
-                }
-                JoinType::RightSemi | JoinType::RightAnti => right.head_output_expr(),
+                JoinType::LeftMark => left.head_output_expr(),
             },
             LogicalPlan::RecursiveQuery(RecursiveQuery { static_term, .. }) => {
                 static_term.head_output_expr()

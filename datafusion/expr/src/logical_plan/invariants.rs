@@ -25,7 +25,7 @@ use crate::{
     expr::{Exists, InSubquery},
     expr_rewriter::strip_outer_reference,
     utils::{collect_subquery_cols, split_conjunction},
-    Aggregate, Expr, Filter, Join, JoinType, LogicalPlan, Window,
+    Aggregate, Expr, Filter, Join, JoinSide, JoinType, LogicalPlan, Window,
 };
 
 pub enum InvariantLevel {
@@ -268,16 +268,21 @@ fn check_inner_plan(inner_plan: &LogicalPlan, can_contain_outer_ref: bool) -> Re
                 })?;
                 Ok(())
             }
-            JoinType::Left
-            | JoinType::LeftSemi
-            | JoinType::LeftAnti
-            | JoinType::LeftMark => {
+            JoinType::LeftMark => {
                 check_inner_plan(left, can_contain_outer_ref)?;
                 check_inner_plan(right, false)
             }
-            JoinType::Right | JoinType::RightSemi | JoinType::RightAnti => {
-                check_inner_plan(left, false)?;
-                check_inner_plan(right, can_contain_outer_ref)
+            JoinType::Outer(side) | JoinType::Semi(side) | JoinType::Anti(side) => {
+                match side {
+                    JoinSide::Left => {
+                        check_inner_plan(left, can_contain_outer_ref)?;
+                        check_inner_plan(right, false)
+                    }
+                    JoinSide::Right => {
+                        check_inner_plan(left, false)?;
+                        check_inner_plan(right, can_contain_outer_ref)
+                    }
+                }
             }
             JoinType::Full => {
                 inner_plan.apply_children(|plan| {

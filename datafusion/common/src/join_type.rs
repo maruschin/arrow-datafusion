@@ -68,10 +68,7 @@ pub enum JoinType {
 
 impl JoinType {
     pub fn is_outer(self) -> bool {
-        match self {
-            JoinType::Outer(_) | JoinType::Full => true,
-            _ => false,
-        }
+        matches!(self, JoinType::Outer(_) | JoinType::Full)
     }
 
     /// Returns the `JoinType` if the (2) inputs were swapped
