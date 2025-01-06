@@ -159,7 +159,7 @@ pub struct PushDownFilter {}
 pub(crate) fn lr_is_preserved(join_type: JoinType) -> (bool, bool) {
     match join_type {
         JoinType::Inner => (true, true),
-        JoinType::Left => (true, false),
+        JoinType::Left | JoinType::LeftGroup => (true, false),
         JoinType::Right => (false, true),
         JoinType::Full => (false, false),
         // No columns from the right side of the join can be referenced in output
@@ -190,6 +190,7 @@ pub(crate) fn on_lr_is_preserved(join_type: JoinType) -> (bool, bool) {
         JoinType::LeftAnti => (false, true),
         JoinType::RightAnti => (true, false),
         JoinType::LeftMark => (false, true),
+        JoinType::LeftGroup => (false, true),
     }
 }
 
@@ -681,13 +682,14 @@ fn infer_join_predicates_from_on_filters(
             on_filters,
             inferred_predicates,
         ),
-        JoinType::Left | JoinType::LeftSemi | JoinType::LeftMark => {
-            infer_join_predicates_impl::<true, false>(
-                join_col_keys,
-                on_filters,
-                inferred_predicates,
-            )
-        }
+        JoinType::Left
+        | JoinType::LeftSemi
+        | JoinType::LeftMark
+        | JoinType::LeftGroup => infer_join_predicates_impl::<true, false>(
+            join_col_keys,
+            on_filters,
+            inferred_predicates,
+        ),
         JoinType::Right | JoinType::RightSemi => {
             infer_join_predicates_impl::<false, true>(
                 join_col_keys,

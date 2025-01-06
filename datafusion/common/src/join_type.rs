@@ -67,6 +67,10 @@ pub enum JoinType {
     ///
     /// [1]: http://btw2017.informatik.uni-stuttgart.de/slidesandpapers/F1-10-37/paper_web.pdf
     LeftMark,
+    /// Left Group join
+    ///
+    /// [2]: https://www.vldb.org/pvldb/vol4/p843-moerkotte.pdf
+    LeftGroup,
 }
 
 impl JoinType {
@@ -89,6 +93,9 @@ impl JoinType {
             JoinType::RightAnti => JoinType::LeftAnti,
             JoinType::LeftMark => {
                 unreachable!("LeftMark join type does not support swapping")
+            }
+            JoinType::LeftGroup => {
+                unreachable!("LeftGroup join type does not support swapping")
             }
         }
     }
@@ -121,6 +128,7 @@ impl Display for JoinType {
             JoinType::LeftAnti => "LeftAnti",
             JoinType::RightAnti => "RightAnti",
             JoinType::LeftMark => "LeftMark",
+            JoinType::LeftGroup => "LeftGroup",
         };
         write!(f, "{join_type}")
     }
@@ -141,6 +149,7 @@ impl FromStr for JoinType {
             "LEFTANTI" => Ok(JoinType::LeftAnti),
             "RIGHTANTI" => Ok(JoinType::RightAnti),
             "LEFTMARK" => Ok(JoinType::LeftMark),
+            "LEFTGROUP" => Ok(JoinType::LeftGroup),
             _ => _not_impl_err!("The join type {s} does not exist or is not implemented"),
         }
     }

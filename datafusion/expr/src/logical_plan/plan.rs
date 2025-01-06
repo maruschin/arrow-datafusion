@@ -541,7 +541,11 @@ impl LogicalPlan {
                 join_type,
                 ..
             }) => match join_type {
-                JoinType::Inner | JoinType::Left | JoinType::Right | JoinType::Full => {
+                JoinType::Inner
+                | JoinType::Left
+                | JoinType::Right
+                | JoinType::Full
+                | JoinType::LeftGroup => {
                     if left.schema().fields().is_empty() {
                         right.head_output_expr()
                     } else {
@@ -654,6 +658,8 @@ impl LogicalPlan {
                 on,
                 schema: _,
                 null_equals_null,
+                group_expr,
+                aggr_expr,
             }) => {
                 let schema =
                     build_join_schema(left.schema(), right.schema(), &join_type)?;
@@ -675,6 +681,8 @@ impl LogicalPlan {
                     filter,
                     schema: DFSchemaRef::new(schema),
                     null_equals_null,
+                    group_expr,
+                    aggr_expr,
                 }))
             }
             LogicalPlan::Subquery(_) => Ok(self),
@@ -928,6 +936,8 @@ impl LogicalPlan {
                     filter: filter_expr,
                     schema: DFSchemaRef::new(schema),
                     null_equals_null: *null_equals_null,
+                    group_expr: None,
+                    aggr_expr: None,
                 }))
             }
             LogicalPlan::Subquery(Subquery {
@@ -1326,9 +1336,10 @@ impl LogicalPlan {
                         (left_max, right_max, _) => Some(left_max * right_max),
                     }
                 }
-                JoinType::LeftSemi | JoinType::LeftAnti | JoinType::LeftMark => {
-                    left.max_rows()
-                }
+                JoinType::LeftSemi
+                | JoinType::LeftAnti
+                | JoinType::LeftMark
+                | JoinType::LeftGroup => left.max_rows(),
                 JoinType::RightSemi | JoinType::RightAnti => right.max_rows(),
             },
             LogicalPlan::Repartition(Repartition { input, .. }) => input.max_rows(),
@@ -3268,6 +3279,9 @@ pub struct Join {
     pub schema: DFSchemaRef,
     /// If null_equals_null is true, null == null else null != null
     pub null_equals_null: bool,
+    /// Only for GroupJoin
+    pub group_expr: Option<Vec<Expr>>,
+    pub aggr_expr: Option<Vec<Expr>>,
 }
 
 impl Join {
@@ -3301,6 +3315,8 @@ impl Join {
             join_constraint: original_join.join_constraint,
             schema: Arc::new(join_schema),
             null_equals_null: original_join.null_equals_null,
+            group_expr: original_join.group_expr.clone(),
+            aggr_expr: original_join.aggr_expr.clone(),
         })
     }
 }
