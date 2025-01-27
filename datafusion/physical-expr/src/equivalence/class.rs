@@ -621,7 +621,11 @@ impl EquivalenceGroup {
         on: &[(PhysicalExprRef, PhysicalExprRef)],
     ) -> Self {
         match join_type {
-            JoinType::Inner | JoinType::Left | JoinType::Full | JoinType::Right => {
+            JoinType::Inner
+            | JoinType::Left
+            | JoinType::LeftGroup
+            | JoinType::Full
+            | JoinType::Right => {
                 let mut result = Self::new(
                     self.iter()
                         .cloned()
